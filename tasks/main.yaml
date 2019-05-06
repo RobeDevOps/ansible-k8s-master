@@ -8,14 +8,14 @@
   command: kubectl get nodes
   become: no
   register: k8s_cluster
-  changed_when: 
+  changed_when:
     - k8s_cluster.rc is defined
     - k8s_cluster.rc != 0
   ignore_errors: yes
-  
-- name: Initialize cluster
+
+- name: Initialize Master node
   command: "kubeadm init --apiserver-advertise-address={{ cluster_ip }} --pod-network-cidr={{ cluster_network_cidr }}"
-  when: 
+  when:
     - k8s_cluster.rc is defined
     - k8s_cluster.rc != 0
 
@@ -26,7 +26,7 @@
     owner: centos
     group: centos
 
-- name: Copy a .kube/config to home directory 
+- name: Copy a .kube/config to home directory
   copy:
     src: /etc/kubernetes/admin.conf
     dest: /home/centos/.kube/config
@@ -40,7 +40,7 @@
     kubectl get pod --all-namespaces | grep flannel
   register: flannel_driver
   ignore_errors: yes
-  changed_when: 
+  changed_when:
     - flannel_driver.rc is defined
     - flannel_driver.rc != 0
 
@@ -54,7 +54,10 @@
 - name: Verify Master is ready
   become: no
   shell: |
+    set -o pipefail
     kubectl get nodes | grep master
+  args:
+    executable: /bin/bash
   register: master_status
   retries: 10
   delay: 30
@@ -64,7 +67,11 @@
   tags: ["k8s-master-ready"]
 
 - name: Generate token command
-  command: kubeadm token create --print-join-command
+  shell: |
+    set -o pipefail
+    kubeadm token create --print-join-command
+  args:
+    executable: /bin/bash
   register: join_command_string
 
 - name: Generate token as fact

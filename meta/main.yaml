@@ -1,6 +1,6 @@
 galaxy_info:
   author: Ronberto Cardenas
-  description: Install and configure k8s master node. 
+  description: Install and configure k8s master node.
   company: Own project
 
   license: BSD
