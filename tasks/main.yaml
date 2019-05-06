@@ -33,6 +33,7 @@
     owner: centos
     group: centos
     remote_src: yes
+  when: not ansible_check_mode
 
 - name: Verify is flannel is not running
   become: no
