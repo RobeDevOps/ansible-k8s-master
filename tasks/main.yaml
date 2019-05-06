@@ -1,0 +1,73 @@
+---
+- name: Set Cluster facts
+  set_fact:
+    cluster_ip: "{{ hostvars['master']['ansible_default_ipv4']['address'] }}"
+    cluster_network_cidr: 10.244.0.0/16
+
+- name: Verify Cluster is not running
+  command: kubectl get nodes
+  become: no
+  register: k8s_cluster
+  changed_when: 
+    - k8s_cluster.rc is defined
+    - k8s_cluster.rc != 0
+  ignore_errors: yes
+  
+- name: Initialize cluster
+  command: "kubeadm init --apiserver-advertise-address={{ cluster_ip }} --pod-network-cidr={{ cluster_network_cidr }}"
+  when: 
+    - k8s_cluster.rc is defined
+    - k8s_cluster.rc != 0
+
+- name: Create kube config directory
+  file:
+    path: "/home/centos/.kube"
+    state: directory
+    owner: centos
+    group: centos
+
+- name: Copy a .kube/config to home directory 
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/centos/.kube/config
+    owner: centos
+    group: centos
+    remote_src: yes
+
+- name: Verify is flannel is not running
+  become: no
+  shell: |
+    kubectl get pod --all-namespaces | grep flannel
+  register: flannel_driver
+  ignore_errors: yes
+  changed_when: 
+    - flannel_driver.rc is defined
+    - flannel_driver.rc != 0
+
+- name: Run Flannel as network driver
+  command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+  become: no
+  when:
+    - flannel_driver.rc is defined
+    - flannel_driver.rc != 0
+
+- name: Verify Master is ready
+  become: no
+  shell: |
+    kubectl get nodes | grep master
+  register: master_status
+  retries: 10
+  delay: 30
+  until:  "' ready ' in master_status.stdout|lower"
+  when: not ansible_check_mode
+  changed_when: master_status.rc != 0
+  tags: ["k8s-master-ready"]
+
+- name: Generate token command
+  command: kubeadm token create --print-join-command
+  register: join_command_string
+
+- name: Generate token as fact
+  set_fact:
+    join_command: "{{ join_command_string.stdout_lines[0] }}"
+  when: join_command_string.rc is defined and join_command_string.rc == 0
